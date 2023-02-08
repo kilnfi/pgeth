@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/pgeth"
 
 	// Force-load the tracer engines to trigger registration
 	_ "github.com/ethereum/go-ethereum/eth/tracers/js"
@@ -326,6 +327,11 @@ func geth(ctx *cli.Context) error {
 	defer stack.Close()
 
 	startNode(ctx, stack, backend, false)
+	pe := pgeth.NewEngine(&pgeth.PluginEngineConfig{
+		Node:    stack,
+		Backend: backend,
+	})
+	pe.Start(ctx.Context)
 	stack.Wait()
 	return nil
 }
