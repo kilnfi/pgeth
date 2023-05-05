@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: "0 * * * *" # every hour
 
+env:
+  PLUGINS:
+    - "pgeth-monitoring"
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -31,9 +35,16 @@ jobs:
           git config --global user.email "iulian@rotaru.fr"
           git config --global user.name "mortimr"
           git rebase --stat origin/master
+
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        plugins: "${{ env.PLUGINS }}"
+    steps:
       - name: "build the docker image to ensure project still builds"
         if: steps.diffcheck.outputs.stdout != '0'
-        run: docker build . --tag ghcr.io/kilnfi/pgeth:latest --tag ghcr.io/kilnfi/pgeth:${GITHUB_SHA}
+        run: docker build .  -f Dockerfile.plugins --tag ghcr.io/kilnfi/${{ matrix.plugins }}:latest --tag ghcr.io/kilnfi/${{ matrix.plugins }}:${GITHUB_SHA} --build-arg PLUGIN_REPOSITORIES="https://github.com/kilnfi/${{ matrix.plugins }}"
       - name: "push rebased pgeth branch"
         if: steps.diffcheck.outputs.stdout != '0'
         run: git push origin pgeth --force
@@ -47,5 +58,5 @@ jobs:
       - name: "push to ghcr"
         if: steps.diffcheck.outputs.stdout != '0'
         run: |
-          docker push ghcr.io/kilnfi/pgeth:latest
-          docker push ghcr.io/kilnfi/pgeth:${GITHUB_SHA}
+          docker push ghcr.io/kilnfi/${{ matrix.plugins }}:latest
+          docker push ghcr.io/kilnfi/${{ matrix.plugins }}:${GITHUB_SHA}
