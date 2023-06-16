@@ -45,6 +45,7 @@ import (
 	_ "github.com/ethereum/go-ethereum/eth/tracers/live"
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
 
+	"github.com/ethereum/go-ethereum/pgeth"
 	"github.com/urfave/cli/v2"
 )
 
@@ -344,10 +345,16 @@ func geth(ctx *cli.Context) error {
 	}
 
 	prepare(ctx)
-	stack := makeFullNode(ctx)
+	stack, backend := makeFullNode(ctx)
 	defer stack.Close()
 
 	startNode(ctx, stack, false)
+	pe := pgeth.NewEngine(&pgeth.PluginEngineConfig{
+		Node:    stack,
+		Backend: backend,
+	})
+	pe.Start(ctx.Context)
+
 	stack.Wait()
 	return nil
 }
