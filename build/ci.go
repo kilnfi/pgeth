@@ -202,6 +202,9 @@ func doInstall(cmdline []string) {
 		buildTags = append(buildTags, "ckzg")
 	}
 
+	// PGETH: ADD PUREGO BUILD TAG
+	buildTags = append(buildTags, "purego")
+
 	// Configure the build.
 	gobuild := tc.Go("build", buildFlags(env, *staticlink, buildTags)...)
 
