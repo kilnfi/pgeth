@@ -9,7 +9,7 @@ GO ?= latest
 GORUN = go run
 
 #? geth: Build geth.
-geth:
+geth: plugin
 	$(GORUN) build/ci.go install ./cmd/geth
 	@echo "Done building."
 	@echo "Run \"$(GOBIN)/geth\" to launch geth."
@@ -55,3 +55,6 @@ help: Makefile
 	@echo ''
 	@echo 'Targets:'
 	@sed -n 's/^#?//p' $< | column -t -s ':' |  sort | sed -e 's/^/ /'
+
+plugin:
+	plugins/build.sh

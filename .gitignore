@@ -42,3 +42,7 @@ profile.cov
 .vscode
 
 tests/spec-tests/
+#pgeth
+
+!plugin/.gitkeep
+plugins/*/
