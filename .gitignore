@@ -43,5 +43,3 @@ profile.cov
 
 tests/spec-tests/
 #pgeth
-
-!plugin/.gitkeep
