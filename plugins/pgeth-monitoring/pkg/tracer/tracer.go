@@ -20,11 +20,9 @@ func (m *MonitoringTracer) Clear() {
 }
 
 func (m *MonitoringTracer) CaptureTxStart(gasLimit uint64) {
-
 }
 
 func (m *MonitoringTracer) CaptureTxEnd(restGas uint64) {
-
 }
 
 func (m *MonitoringTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
@@ -130,7 +128,6 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 		}
 
 		if fetchSize < size {
-			fmt.Println("DEVNET DEBUG: add zeros ", size, fetchSize)
 			data = addZeros(data, size-fetchSize)
 		}
 
@@ -181,7 +178,6 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 		}
 
 		if fetchSize < size {
-			fmt.Println("DEVNET DEBUG: add zeros ", size, fetchSize)
 			data = addZeros(data, size-fetchSize)
 		}
 
