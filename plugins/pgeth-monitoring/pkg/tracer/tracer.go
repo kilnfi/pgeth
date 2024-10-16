@@ -6,7 +6,8 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type MonitoringTracer struct {
@@ -19,19 +20,30 @@ func (m *MonitoringTracer) Clear() {
 	m.Cursor = nil
 }
 
+func NewTracer() (*tracing.Hooks, *MonitoringTracer) {
+	mt := &MonitoringTracer{}
+	return &tracing.Hooks{
+		OnTxStart: mt.OnTxStart,
+		OnTxEnd:   mt.OnTxEnd,
+		OnEnter:   mt.OnEnter,
+		OnExit:    mt.OnExit,
+		OnOpcode:  mt.OnOpcode,
+	}, mt
+}
+
 func (m *MonitoringTracer) CaptureTxStart(gasLimit uint64) {
 }
 
 func (m *MonitoringTracer) CaptureTxEnd(restGas uint64) {
 }
 
-func (m *MonitoringTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
-	copyInput := make([]byte, len(input))
+func (m *MonitoringTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transaction, from common.Address) {
+	copyInput := make([]byte, len(tx.Data()))
 	usedValue := big.NewInt(0)
-	if value != nil {
-		usedValue.Set(value)
+	if tx.Value() != nil {
+		usedValue.Set(tx.Value())
 	}
-	copy(copyInput, input)
+	copy(copyInput, tx.Data())
 	m.Action = &Call{
 		CallType:      "initial_call",
 		TypeValue:     "call",
@@ -42,11 +54,11 @@ func (m *MonitoringTracer) CaptureStart(env *vm.EVM, from common.Address, to com
 		ContextValue: common.Address{},
 		CodeValue:    common.Address{},
 
-		ForwardedContext: to,
-		ForwardedCode:    to,
+		ForwardedContext: *tx.To(),
+		ForwardedCode:    *tx.To(),
 
 		From:  from,
-		To:    to,
+		To:    *tx.To(),
 		In:    copyInput,
 		InHex: "0x" + hex.EncodeToString(copyInput),
 		Value: "0x" + usedValue.Text(16),
@@ -54,14 +66,15 @@ func (m *MonitoringTracer) CaptureStart(env *vm.EVM, from common.Address, to com
 	m.Cursor = m.Action
 }
 
-func (m *MonitoringTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
+func (m *MonitoringTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	output := m.Cursor.(*Call).Children()[0].(*Call).Out
 	copyOutput := make([]byte, len(output))
 	copy(copyOutput, output)
 	m.Cursor.(*Call).Out = copyOutput
 	m.Cursor.(*Call).OutHex = "0x" + hex.EncodeToString(copyOutput)
 }
 
-func (m *MonitoringTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+func (m *MonitoringTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 	callType := callOpcodeToString(typ)
 	ctx, code := parentContextAndCode(m.Cursor)
 	forwardedCode := to
@@ -96,7 +109,7 @@ func (m *MonitoringTracer) CaptureEnter(typ vm.OpCode, from common.Address, to c
 	m.Cursor = call
 }
 
-func (m *MonitoringTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
+func (m *MonitoringTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 	copyOutput := make([]byte, len(output))
 	copy(copyOutput, output)
 	m.Cursor.(*Call).Out = copyOutput
@@ -104,9 +117,9 @@ func (m *MonitoringTracer) CaptureExit(output []byte, gasUsed uint64, err error)
 	m.Cursor = m.Cursor.Parent()
 }
 
-func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
+func (m *MonitoringTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
 	if op >= 160 && op <= 164 {
-		stack := scope.Stack.Data()
+		stack := scope.StackData()
 		stackLen := len(stack)
 		var offset int64 = 0
 		var size int64 = 0
@@ -115,16 +128,17 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 			size = stack[stackLen-2].ToBig().Int64()
 		}
 		fetchSize := size
-		var data []byte = []byte{}
-		if int64(scope.Memory.Len()) < offset {
+		var data = []byte{}
+		if int64(len(scope.MemoryData())) < offset {
 			fetchSize = 0
 			// generate zero array
-		} else if int64(scope.Memory.Len()) < offset+size {
-			fetchSize -= (offset + size) - int64(scope.Memory.Len())
+		} else if int64(len(scope.MemoryData())) < offset+size {
+			fetchSize -= (offset + size) - int64(len(scope.MemoryData()))
 		}
 
 		if fetchSize > 0 {
-			data = scope.Memory.GetCopy(offset, fetchSize)
+			data = make([]byte, fetchSize)
+			copy(data, scope.MemoryData()[offset:offset+fetchSize])
 		}
 
 		if fetchSize < size {
@@ -146,7 +160,7 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 			Data:      data,
 			DataHex:   "0x" + hex.EncodeToString(data),
 			Topics:    topics,
-			From:      scope.Contract.Address(),
+			From:      scope.Address(),
 
 			ContextValue: ctx,
 			CodeValue:    code,
@@ -157,7 +171,7 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 	if op == 253 {
 		errorType := "revert"
 		data := []byte{}
-		stack := scope.Stack.Data()
+		stack := scope.StackData()
 		stackLen := len(stack)
 		var offset int64 = 0
 		var size int64 = 0
@@ -166,15 +180,16 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 			size = stack[stackLen-2].ToBig().Int64()
 		}
 		fetchSize := size
-		if int64(scope.Memory.Len()) < offset {
+		if int64(len(scope.MemoryData())) < offset {
 			fetchSize = 0
 			// generate zero array
-		} else if int64(scope.Memory.Len()) < offset+size {
-			fetchSize -= (offset + size) - int64(scope.Memory.Len())
+		} else if int64(len(scope.MemoryData())) < offset+size {
+			fetchSize -= (offset + size) - int64(len(scope.MemoryData()))
 		}
 
 		if fetchSize > 0 {
-			data = scope.Memory.GetCopy(offset, fetchSize)
+			data = make([]byte, fetchSize)
+			copy(data, scope.MemoryData()[offset:offset+fetchSize])
 		}
 
 		if fetchSize < size {
@@ -188,7 +203,7 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 			TypeValue:    "revert",
 			Data:         data,
 			DataHex:      "0x" + hex.EncodeToString(data),
-			From:         scope.Contract.Address(),
+			From:         scope.Address(),
 			ContextValue: ctx,
 			CodeValue:    code,
 			ParentValue:  m.Cursor,
@@ -197,7 +212,7 @@ func (m *MonitoringTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint6
 	}
 }
 
-func (m *MonitoringTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, depth int, err error) {
+func (m *MonitoringTracer) OnFault(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, depth int, err error) {
 	if op != 253 {
 		ctx, code := parentContextAndCode(m.Cursor)
 		m.Cursor.AddChildren(&Revert{
@@ -205,7 +220,7 @@ func (m *MonitoringTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint6
 			TypeValue:    "revert",
 			Data:         []byte{},
 			DataHex:      "0x" + hex.EncodeToString([]byte{}),
-			From:         scope.Contract.Address(),
+			From:         scope.Address(),
 			ContextValue: ctx,
 			CodeValue:    code,
 			ParentValue:  m.Cursor,
@@ -214,7 +229,7 @@ func (m *MonitoringTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint6
 	}
 }
 
-func callOpcodeToString(c vm.OpCode) string {
+func callOpcodeToString(c byte) string {
 	switch c {
 	case 241:
 		return "call"
