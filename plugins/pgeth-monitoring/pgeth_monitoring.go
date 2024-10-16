@@ -205,9 +205,9 @@ func (me *MonitoringEngine) analyze(ctx context.Context, block *types.Block, sco
 	}
 	// We configure the vm to use our monitoring tracer
 	gp := new(core.GasPool).AddGas(block.Header().GasLimit)
-	mt := tracer.MonitoringTracer{}
+	tr, mt := tracer.NewTracer()
 	var vmConfig vm.Config = vm.Config{
-		Tracer:                  &mt,
+		Tracer:                  tr,
 		NoBaseFee:               false,
 		EnablePreimageRecording: false,
 		ExtraEips:               []int{},
@@ -242,9 +242,9 @@ func (me *MonitoringEngine) analyze(ctx context.Context, block *types.Block, sco
 
 func (me *MonitoringEngine) analyzePending(ctx context.Context, txs []*types.Transaction) {
 	gp := new(core.GasPool).AddGas(me.header.GasLimit)
-	mt := tracer.MonitoringTracer{}
+	tr, mt := tracer.NewTracer()
 	var vmConfig vm.Config = vm.Config{
-		Tracer:                  &mt,
+		Tracer:                  tr,
 		NoBaseFee:               true,
 		EnablePreimageRecording: false,
 		ExtraEips:               []int{},
@@ -306,11 +306,16 @@ func (me *MonitoringEngine) startHeadListener(ctx context.Context) {
 			}
 			return
 		case newHead := <-headChan:
-			me.update(ctx, newHead.Block)
-			me.ptk.Logger.Info(fmt.Sprintf("Head was updated, number: %d, hash: %s, root: %s", newHead.Block.NumberU64(), newHead.Block.Hash(), newHead.Block.Root()))
+			headBlock := me.backend.Ethereum().BlockChain().GetBlockByHash(newHead.Header.Hash())
+			if headBlock == nil {
+				continue
+			}
+			me.update(ctx, headBlock)
 
-			analyzedTransactions := me.analyze(ctx, newHead.Block, "head")
-			cache[newHead.Block.Hash()] = CachedBlockSimulation{
+			me.ptk.Logger.Info(fmt.Sprintf("Head was updated, number: %d, hash: %s, root: %s", headBlock.NumberU64(), headBlock.Hash(), headBlock.Root()))
+
+			analyzedTransactions := me.analyze(ctx, headBlock, "head")
+			cache[headBlock.Hash()] = CachedBlockSimulation{
 				Time:                 time.Now(),
 				AnalyzedTransactions: analyzedTransactions,
 			}
@@ -383,7 +388,6 @@ func (me *MonitoringEngine) startHeadListener(ctx context.Context) {
 				}
 				me.ptk.Logger.Info("Finalized head was updated", "number", newHighestFinalized)
 				highestFinalized = newHighestFinalized
-
 			}
 
 			for k, v := range cache {
