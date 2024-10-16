@@ -44,6 +44,10 @@ func (m *MonitoringTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transactio
 		usedValue.Set(tx.Value())
 	}
 	copy(copyInput, tx.Data())
+	to := common.Address{}
+	if tx.To() != nil {
+		to = *tx.To()
+	}
 	m.Action = &Call{
 		CallType:      "initial_call",
 		TypeValue:     "call",
@@ -54,11 +58,11 @@ func (m *MonitoringTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transactio
 		ContextValue: common.Address{},
 		CodeValue:    common.Address{},
 
-		ForwardedContext: *tx.To(),
-		ForwardedCode:    *tx.To(),
+		ForwardedContext: to,
+		ForwardedCode:    to,
 
 		From:  from,
-		To:    *tx.To(),
+		To:    to,
 		In:    copyInput,
 		InHex: "0x" + hex.EncodeToString(copyInput),
 		Value: "0x" + usedValue.Text(16),
