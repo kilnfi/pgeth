@@ -71,11 +71,13 @@ func (m *MonitoringTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transactio
 }
 
 func (m *MonitoringTracer) OnTxEnd(receipt *types.Receipt, err error) {
-	output := m.Cursor.(*Call).Children()[0].(*Call).Out
-	copyOutput := make([]byte, len(output))
-	copy(copyOutput, output)
-	m.Cursor.(*Call).Out = copyOutput
-	m.Cursor.(*Call).OutHex = "0x" + hex.EncodeToString(copyOutput)
+	if len(m.Cursor.(*Call).Children()) == 1 {
+		output := m.Cursor.(*Call).Children()[0].(*Call).Out
+		copyOutput := make([]byte, len(output))
+		copy(copyOutput, output)
+		m.Cursor.(*Call).Out = copyOutput
+		m.Cursor.(*Call).OutHex = "0x" + hex.EncodeToString(copyOutput)
+	}
 }
 
 func (m *MonitoringTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
