@@ -206,7 +206,7 @@ func (me *MonitoringEngine) analyze(ctx context.Context, block *types.Block, sco
 	// We configure the vm to use our monitoring tracer
 	gp := new(core.GasPool).AddGas(block.Header().GasLimit)
 	tr, mt := tracer.NewTracer()
-	var vmConfig vm.Config = vm.Config{
+	var vmConfig = vm.Config{
 		Tracer:                  tr,
 		NoBaseFee:               false,
 		EnablePreimageRecording: false,
