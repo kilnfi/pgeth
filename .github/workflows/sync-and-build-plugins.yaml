@@ -8,7 +8,7 @@ permissions: write-all
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: fixed-egress
     steps:
       - uses: actions/checkout@v3
         with:
